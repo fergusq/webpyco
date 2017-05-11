@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="description" content="Säveltävä ohjelma säveltää sävellykset puolestasi." />
+<title>Pyco: säveltävä ohjelma</title>
+<link rel="stylesheet" href="style.css" type="text/css">
+<script src="https://code.jquery.com/jquery-3.1.1.min.js" type="text/javascript"></script>
+<script type="text/javascript">
+	$(() => {
+		$("#play-btn").show();
+		$("#play-help").show();
+	});
+	function playMusic() {
+		$("#loading").show();
+		$("#play-btn").attr("disabled", "disabled");
+		$("#submit-btn").attr("disabled", "disabled");
+		$.post( "compose_ajax.php", $( "#comform" ).serialize() )
+			.done((data) => {
+				$("#player_audio").attr("src", data.file);
+				$("#player").show();
+				$("#loading").hide();
+				$("#play-btn").removeAttr("disabled");
+				$("#submit-btn").removeAttr("disabled");
+			});
+	}
+	function checkSyntax() {
+		var errors = "";
+		var lines = $("#scriptarea").val().split("\n");
+		for (var line in lines) {
+			line = lines[line];
+			line = line.trim();
+			var seed = new RegExp("^seed\\s*=\\s*(.*)$");
+			var scale = new RegExp("^scale\\s*=\\s*((\\s|0|1|2|3|4|5|6|7|8|9|10|11)+)$");
+			var kw = new RegExp("^keywords\\s*=\\s*([\\w\\s]+)$");
+			var tempo = new RegExp("^tempo\\s*=\\s*([0-9]+)$");
+			var rythm = new RegExp("^([a-z]\\.?)\\s*=\\s*(-?[0-9]+(\\s+-?[0-9]+)*|\\?|\\?end)$");
+			var verse = new RegExp("^(\\*?[A-Z]'*)\\s*=\\s*([a-z]\\.?'?(\\s+[a-z]\\.?'?)*)\\s*(:\\s*([\\w\\s]+|\\$\\w+))?\\s*(\\((\\w+)\\))?$");
+			var song = new RegExp("^[A-Z]'*(/[A-Z]'*)*(\\s+[A-Z]'*(/[A-Z]'*)*)*$");
+			var rule = new RegExp("^(\\w+)\\\\(\\w+) = (-?[0-9]+(\\.[0-9]+)?)$");
+			var cp = new RegExp("^(\\$\\w+) = ([0-6](\\s+[0-6])*|\\?([0-9]+)\\s*(:\\s*([\\w\\s]+))?)$");
+			var comment = new RegExp("^(#.*)?$");
+			if (seed.test(line)) {
+				continue;
+			}
+			else if (scale.test(line)) {
+				continue;
+			}
+			else if (kw.test(line)) {
+				continue;
+			}
+			else if (scale.test(line)) {
+				continue;
+			}
+			else if (tempo.test(line)) {
+				continue;
+			}
+			else if (rythm.test(line)) {
+				continue;
+			}
+			else if (verse.test(line)) {
+				continue;
+			}
+			else if (song.test(line)) {
+				continue;
+			}
+			else if (rule.test(line)) {
+				continue;
+			}
+			else if (cp.test(line)) {
+				continue;
+			}
+			else if (comment.test(line)) {
+				continue;
+			}
+			else {
+				errors += "<p>Syntaksivirhe kohdassa <code>\""+
+					line.replace("&", "&amp;")
+					.replace("<", "&lt;")
+					.replace(">", "&gt;")+"\"</code>.</p>";
+			}
+		}
+		$("#errors").html(errors);
+	}
+</script>
+</head>
+<body>
+<h1>PYCO: SÄVELTÄVÄ OHJELMA</h1>
+<p>Kaikki kentät ovat pakollisia!</p>
+<form id="comform" action="/music/compose.php" method="POST">
+<table class="form">
+<tr><th>Siemenmerkkijono:</th><td><input type="text" id="seed" name="seed" pattern="[a-zA-Z0-9\-_åäöÅÄÖ ]+"
+	x-moz-errormessage="Arvo saa sisältää vain suomen aakkosia, numeroita, välilyöntejä, alaviivoja ja tavuviivoja."
+	value="Esimerkki" /></td></tr>
+<tr><th>Koodi:</th><td><textarea id="scriptarea" name="script" rows=10 cols=60 onkeyup="checkSyntax();">
+A = a b a c.
+*B = d b d e.
+C = f g f h.
+A A B B A A B B C C B B B B
+</textarea>
+<div id="errors"></div></td></tr>
+<tr><th>Satunnaiset soittimet:</th><td><input type="checkbox" name="rndinstruments" /></td></tr>
+<tr><th></th><td>
+	<button id="play-btn" type="button" onclick="playMusic();" style="display:none;" >Luo .ogg</button>
+	<input id="submit-btn" type="submit" value="Lataa .mid" />
+	<span id="loading" style="display:none;">Ladataan...</span>
+	<p id="play-help" style="display:none;">
+	Midin lataaminen on nopeampaa kuin äänitiedoston luominen. Internetselaimen on tuettava
+	Ogg Vorbis -äänitiedostoja.
+	Luotujen äänitiedostojen laatu ei ole kovin hyvä.
+	</p>
+	<p>Jos midin sijasta saat 404-virheen, se tarkoittaa luultavasti sitä, että olet tehnyt
+	syntaksi- tai muun virheen koodissa. Jos taas saat 400-virheen, se luultavasti merkitsee sitä,
+	että olet jättänyt jonkun kentistä tyhjäksi. Jos sivu ei toimi, otathan yhteyttä ylläpitäjä
+	Iikka Hauhioon (iikka at kaivos piste org).</p>
+	<p><strong>Käyttämällä palvelua hyväksyt <a href="terms.html">käyttöehdot</a>!
+	Pycon luomat sävellykset on lisensoitu Creative Commons
+	<a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">BY-NC-SA 4.0</a> -lisenssillä.</strong></p>
+</td></tr>
+</table>
+</form>
+<div id="player" style="display:none;">
+<span id="song_name"></span>
+<audio id="player_audio" controls>
+Your browser does not support the <code>audio</code> element.
+</audio>
+</div>
+<h2>Ohjeet</h2>
+<p>
+Säveltävän ohjelman syötteenä on koodi, joka sisältää tiedon säkeistä ja niiden rakenteesta.
+Jokainen säe koostuu joukosta kuvioita, jotka on eroteltu välilyönneillä. Alla on yksinkertainen
+säe.
+</p>
+<pre><code>A = a b a c.</code></pre>
+<p>
+Säkeen nimi on <code>A</code> ja se koostuu neljästä tahdista. Ensimmäisessä ja kolmannessa tahdissa
+on sama rytmi. Viimeisen tahdin perässä on piste, sillä sen rytmin halutaan olevan ns. "loppurytmi".
+</p>
+<p>
+Säkeen voi merkitä kertosäkeeksi tähdellä. Kertosäkeet sisältävät suurempia intervalleja ja enemmän
+vaihtelua.
+</p>
+<pre><code>*B = d b d e.</code></pre>
+<p>
+Oletuksena rytmit arvotaan etukäteen määritellystä listasta valmiita hyviä rytmejä. Koodissa voi
+kuitenkin käyttää myös omia rytmejä halutessaan. Rytmi on lista kokonaislukuja, jotka kuvaavat
+nuotin pituutta kuudestoistaosissa. Luku 4 vastaa siis neljäsosaa (4/16) ja luku 2 kahdeksasosaa
+(2/16). Negatiiviset luvut ovat taukoja. Alla olevassa koodissa ensimmäisen ja kolmannen tahdin
+rytmi on käyttäjän antama ja muut rytmit arvotaan.
+</p>
+<pre><code>a = 2 -2 2 -2 2 2 4
+A = a b a c.</code></pre>
+<p>
+Oletuksena jokaiselle säkeelle luodaan erikseen sointukulku. Jos kahdelle säkeelle haluaa saman
+sointukulun, voi asettaa sointukulun muuttujaan <code>$</code>-komennolla ja mainita tämän
+säkeen jälkeen kaksoispisteen kanssa. Kysymysmerkin jälkeen tuleva luku kertoo tahtien määrän
+sointukulussa.
+</p>
+<pre><code>$a = ?4
+A = a b. a c. : $a
+B = a b. a d. : $a</code></pre>
+<p>
+Sointukuluksi voi määritellä myös mielivaltaisen asteikon soinnuista koostuvan jonon. Jokainen
+numero <var>i</var> kuvaa asteikon <var>i</var>+1:nnettä sointua. Esimerkiksi C-mollin ensimmäinen
+sointu (0) on C-molli ja kolmas sointu (2) Eb-duuri.
+</p>
+<pre><code>$a = 0 0 5 0</code></pre>
+<p>
+Ohjelma luo melodian arvioimalla yksittäisten sävelten onnistuneisuutta tiettyjen funktioiden
+avulla ja vaihtamalla tarvittaessa huonoja säveliä parempiin. Funktioilla on painoarvot, joita voi
+muuttaa koodissa. Alla olevassa esimerkissä soinnun säveliä suositaan muiden sävelien yli.
+</p>
+<pre><code>promoteChordNotes\chordNotes = 100
+A = a b c d. (promoteChordNotes)</code></pre>
+<p>
+Ennen kenoviivaa määritellään painoarvomuutoksen nimi (<code>promoteChordNotes</code>) ja sen
+jälkeen funktion nimi ja uusi painoarvo. Muutos otetaan käyttöön mainitsemalla se suluissa
+säkeen jälkeen. Useille eri muutoksille voi antaa saman nimen, jolloin nimen mainitseminen säkeen
+jälkeen vaikuttaa kaikkiin muutettuihin funktioihin.
+</p>
+<p>Tuetut funktiot:
+<code>chordNotes</code>,
+<code>chordNotesOn0And8</code>,
+<code>middleC</code>,
+<code>noChange</code>,
+<code>notesInKey</code>,
+<code>nonZeroIntervals</code>,
+<code>noZigzag</code>,
+<code>octaves6And7</code>,
+<code>smallIntervals</code>.</p>
+<p>
+Sävellyksen asteikkoa voi muuttaa <code>scale</code>-komennolla. Jokaista asteikon säveltä
+esitetään kokonaisluvulla välillä 0-11. Oletusasteikko on C-molli.
+Alla on määritelty asteikoksi C-duuri.
+</p>
+<pre><code>scale = 0 2 4 5 7 9 11</code></pre>
+<p>
+Kappaleen tempoa voi muuttaa <code>tempo</code>-komennolla. Oletustempo on 140 BPM.
+</p>
+<pre><code>tempo = 80</code></pre>
+<p>Esimerkki:</p>
+<pre><code>A = a b a c.
+*B = d b d e.
+C = f g f h.
+A A B B A A B B C C B B B B</code></pre>
+<hr/>
+<footer>
+Käyttämällä palvelua hyväksyt palvelun <a href="terms.html">käyttöehdot</a>.<br/>
+Copyright (c) 2017 Lassi Kaimio ja Iikka Hauhio
+</footer>
+</body>
+</html>

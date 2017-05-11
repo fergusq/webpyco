@@ -1,0 +1,149 @@
+{
+	http := require("http_server")
+}
+
+hash str {
+	s := 0
+	for i in [seq(0, #str-1)] do
+		c := ord(str[i:i+1])
+		s = (((s + c*32582657) b_xor (c b_shiftl 15)) % 100000000)
+	done
+	return s
+}
+
+function date {
+	return "["..[{}()|bufferedExec("date", "+%d.%m.%Y/%H:%M")][0].."] "
+}
+
+record StaticController : http.Controller {
+	@http.handle "/static/[\\.\\w]+"
+	function handleStatic request {
+		file_name := "static/"..match("/static/([\\.\\w]+)", request.path)[1]
+		unless [ fileExists(file_name) ] do
+			request.send404
+		else
+			request.sendFile mimeType(file_name), file_name
+		done
+	}
+}
+
+record MusicController : http.Controller {
+	@http.handle "/music/(index.html|index2.html|terms.html|style.css|Sortable.js)"
+	function handleIndex request {
+		file_name := match("/music/(index.html|index2.html|terms.html|style.css|Sortable.js)", request.path)[1]
+		errprint(date(), "[", request.connection.ip, "] \x1b[32mServing "..file_name.."...\x1b[0m\n")
+		request.sendFile mimeType(file_name), file_name
+		errprint(date(), "[", request.connection.ip, "] \x1b[32mDone serving "..file_name.."...\x1b[0m\n")
+	}
+	
+	@http.handle "/music/song/[\\w\\-åäöÅÄÖ]+-[0-9]+\\.(mid|ogg)"
+	function handleSong request {
+		file_name := match("/music/song/([\\w\\-åäöÅÄÖ]+-[0-9]+\\.(mid|ogg))", request.path)[1]
+		unless fileExists("sats-"..file_name) do
+			request.send404
+			return
+		done
+		errprint(date(), "[", request.connection.ip, "] \x1b[32mServing sats-"..file_name.."...\x1b[0m\n")
+		request.sendFile mimeType("sats-"..file_name), "sats-"..file_name
+		errprint(date(), "[", request.connection.ip, "] \x1b[32mDone serving sats-"..file_name.."...\x1b[0m\n")
+	}
+	
+	@http.handle "/music/compose(_ajax)?.php"
+	function handleCompose request {
+		if [ request.command != "POST" ] do
+			request.send("405 Method Not Allowed", "<html>
+			<head><title>405 Method Not Allowed</title></head>
+			<body><h1>405 Method Not Allowed</h1>
+			<hr/>
+			<p><i>http_server.röd</i></p></body>
+			</html>")
+			return
+		done
+		unless [ request.form["script"]? ] do
+			badRequest(request, "script", "Muista kirjoittaa sävellykselle koodi.")
+			return
+		done
+		unless [ request.form["seed"]? and request.form["seed"] =~ "[\\w\\-åäöÅÄÖ ]+" ] do
+			badRequest(request, "seed", "Muista antaa sävellykselle siemenmerkkijono.")
+			return
+		done
+		midi_file := compose(request.form["seed"], request.form["script"], request.form["rndinstruments"]?)
+		if [ request.path = "/music/compose_ajax.php" ] do
+			unless fileExists("sats-"..midi_file..".ogg") do
+				errprint(date(), "\x1b[1;31mCreating ", midi_file, ".ogg...\x1b[0m\n")
+				/*{} | exec("wildmidi", "-o", "sats-"..midi_file..".wav", "sats-"..midi_file..".mid") | {}*/
+				/*{} | exec("fluidsynth", "-F", "sats-"..midi_file..".wav", "/usr/share/sounds/sf2/FluidR3_GM.sf2", "sats-"..midi_file..".mid") | {}*/
+				{} | exec(
+					"gst-launch-1.0",
+					"filesrc", "location=sats-"..midi_file..".mid",
+					"!", "decodebin", "!", "audioconvert", "!", "wavenc",
+					"!", "filesink", "location=sats-"..midi_file..".wav") | {}
+				{} | exec("oggenc", "--utf8", "-q", "4", "-a", "Pyco", "-t", request.form["seed"], "-o", "sats-"..midi_file..".ogg", "sats-"..midi_file..".wav") | {}
+				{} | exec("rm", "sats-"..midi_file..".wav") | {}
+			done
+			request.send("200 OK", "{\"file\":\"/music/song/"..midi_file..".ogg\"}", mime="text/json")
+		else
+			request.redirect "/music/song/"..midi_file..".mid"
+		done
+	}
+	
+	function handle request {
+		request.redirect "/music/index.html"
+	}
+}
+
+compose seed, script, rndinstruments {
+	song_id := hash(script..rndinstruments)
+	midi_file := ""
+	while true do
+		midi_file_x := seed
+		midi_file = ""
+		for ci in [seq(0,#midi_file_x-1)] do
+			c := midi_file_x[ci:ci+1]
+			if [ c =~ "[a-zA-Z0-9]" ] do
+				midi_file .= c
+			else
+				midi_file .= "_"..ord(c)
+			done
+		done
+		midi_file .= "-"..song_id
+		break unless [ fileExists(song_id..".txt") and not fileExists("sats-"..midi_file..".mid") ]
+		song_id += 1
+	done
+	return midi_file if fileExists("sats-"..midi_file..".mid")
+	push(script) | writeStrings(song_id..".txt")
+	instruments := push(["--random-instruments"]) if [ rndinstruments ] else [[]]
+	args := [push("python3", "satunnainen_script.py", *instruments, "--out", midi_file, "--seed", seed, song_id..".txt")]
+	errprint(date(), "\x1b[1;31mCreating ", midi_file, ".mid...\x1b[0m\n")
+	{
+		push(arg, " ") for arg in args
+		print("")
+		{} | bufferedExec(*args) | print(x) for x
+	} | writeStrings(midi_file..".log")
+	return midi_file
+}
+
+badRequest request, field, msg {
+	errprint "Bad request: "
+	errprint("{", [for key in [keys(request.form)] do
+		push(key, "=", request.form[key])
+	done]&", ", "}, ")
+	errprint(request.path, "\n")
+	request.send("400 Bad Request", "<html>
+	<head><title>400 Bad Request</title></head>
+	<body><h1>400 Bad Request</h1>
+	<p>Kentän <code>"..field.."</code> arvo puuttuu. "..msg.."</p>
+	<hr/>
+	<p><i>http_server.röd</i></p></body>
+	</html>")
+}
+
+main {
+	music := new http.HttpServer(25567)
+	music.controllers["/"] = http.controller({ |request|; request.redirect "/music/index.html" })
+	music.controllers["/static"] = new StaticController
+	music.controllers["/music"] = new MusicController
+	while true do
+		try music.update
+	done
+}
